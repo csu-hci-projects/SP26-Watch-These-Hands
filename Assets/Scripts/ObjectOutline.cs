@@ -1,4 +1,4 @@
-using UnityEngine;
+           using UnityEngine;
 
 /// <summary>
 /// Manages the Blender-style orange outline on a selected object.

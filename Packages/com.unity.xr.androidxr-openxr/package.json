@@ -1,0 +1,40 @@
+{
+  "name": "com.unity.xr.androidxr-openxr",
+  "displayName": "Unity OpenXR Android XR",
+  "version": "1.2.0",
+  "unity": "6000.0",
+  "unityRelease": "23f1",
+  "description": "Enables you to build mixed reality apps for Android XR devices by implementing support for Android XR extensions.",
+  "keywords": [
+    "openxr",
+    "google",
+    "android",
+    "xr",
+    "vr",
+    "mr",
+    "mixed",
+    "reality",
+    "virtual",
+    "arfoundation"
+  ],
+  "dependencies": {
+    "com.unity.xr.openxr": "1.16.0",
+    "com.unity.xr.arfoundation": "6.4.0",
+    "com.unity.xr.management": "4.5.0",
+    "com.unity.xr.hands": "1.6.1",
+    "com.unity.xr.compositionlayers": "2.3.0"
+  },
+  "_upm": {
+    "changelog": "### Added\n- Added support for Composition Layers Passthrough Splash Screen (requires Composition Layers version 2.3.0+)\n\n### Changed\n- Changed the project validation rules to no longer show an extraneous validation warning regarding an upcoming feature.\n- Updated ARF package dependency to 6.4.0\n\n### Fixed\n- Fixed the Foveated Rendering feature preventing Unity projects using it from appearing on the Play\n  Store for devices without eye tracking - it uses the Eye Tracking permission for ETFR but\n  gracefully degrades to FFR without permissions or hardware support."
+  },
+  "upmCi": {
+    "footprint": "f9cd092595523937df35d412d808b3830e060c0c"
+  },
+  "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.xr.androidxr-openxr@1.2/manual/index.html",
+  "repository": {
+    "url": "https://github.cds.internal.unity3d.com/unity/xr.sdk.androidxr-openxr.git",
+    "type": "git",
+    "revision": "fab9e49eb4628ca09f94631d3b6b56ebe0528db5"
+  },
+  "_fingerprint": "2cb6735c4887509c8cc493bfda224192050f83f8"
+}
