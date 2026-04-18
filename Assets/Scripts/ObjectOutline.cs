@@ -9,7 +9,7 @@
 public class ObjectOutline : MonoBehaviour
 {
     [SerializeField] Color  outlineColor = new Color(1f, 0.5f, 0f, 1f);
-    [SerializeField] float  outlineWidth = 0.025f;
+    [SerializeField] float  outlineWidth = 0.05f;
 
     GameObject _outlineGO;
 
@@ -34,25 +34,25 @@ public class ObjectOutline : MonoBehaviour
             return;
         }
 
-        var mat = new Material(outlineShader)
-        {
-            hideFlags = HideFlags.HideAndDontSave
-        };
+        var sourceMF = GetComponent<MeshFilter>();
+        if (sourceMF == null || sourceMF.sharedMesh == null) return;
+
+        var mat = new Material(outlineShader);
         mat.SetColor("_OutlineColor", outlineColor);
         mat.SetFloat("_OutlineWidth", outlineWidth);
 
-        _outlineGO = new GameObject("__Outline__") { hideFlags = HideFlags.HideAndDontSave };
+        _outlineGO = new GameObject("__Outline__");
         _outlineGO.transform.SetParent(transform, false);
         _outlineGO.transform.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
         _outlineGO.transform.localScale = Vector3.one;
 
-        var mf       = _outlineGO.AddComponent<MeshFilter>();
-        mf.sharedMesh = GetComponent<MeshFilter>().sharedMesh;
+        var mf        = _outlineGO.AddComponent<MeshFilter>();
+        mf.sharedMesh = sourceMF.sharedMesh;
 
         var mr        = _outlineGO.AddComponent<MeshRenderer>();
-        mr.sharedMaterial = mat;
-        mr.shadowCastingMode  = UnityEngine.Rendering.ShadowCastingMode.Off;
-        mr.receiveShadows     = false;
+        mr.material   = mat;
+        mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        mr.receiveShadows    = false;
     }
 
     void DestroyOutline()
@@ -61,7 +61,7 @@ public class ObjectOutline : MonoBehaviour
 
         // Destroy the temp material too.
         var mr = _outlineGO.GetComponent<MeshRenderer>();
-        if (mr != null) DestroyImmediate(mr.sharedMaterial);
+        if (mr != null) Destroy(mr.material);
 
         DestroyImmediate(_outlineGO);
         _outlineGO = null;
