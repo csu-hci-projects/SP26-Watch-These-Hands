@@ -1,71 +1,91 @@
-           using UnityEngine;
+using UnityEngine;
 
 /// <summary>
-/// Manages the Blender-style orange outline on a selected object.
-/// Creates a child GameObject that renders the mesh with SelectionOutline.shader
-/// (normal-extrusion, Cull Front) so only the silhouette border is visible.
+/// Reusable inverted-hull outline for selected objects.
+/// The outline child stays alive and only toggles visibility, avoiding material churn.
 /// </summary>
 [RequireComponent(typeof(MeshFilter))]
 public class ObjectOutline : MonoBehaviour
 {
-    [SerializeField] Color  outlineColor = new Color(1f, 0.5f, 0f, 1f);
-    [SerializeField] float  outlineWidth = 0.05f;
+    static readonly int OutlineColorId = Shader.PropertyToID("_OutlineColor");
+    static readonly int OutlineWidthId = Shader.PropertyToID("_OutlineWidth");
 
-    GameObject _outlineGO;
+    [SerializeField] Color outlineColor = new Color(1f, 0.55f, 0.05f, 1f);
+    [SerializeField] float outlineWidth = 0.03f;
 
-    // ── Public API ────────────────────────────────────────────────────────────
+    GameObject outlineObject;
+    MeshRenderer outlineRenderer;
+    MaterialPropertyBlock propertyBlock;
 
     public void SetSelected(bool selected)
     {
-        if (selected) CreateOutline();
-        else          DestroyOutline();
+        EnsureOutline();
+
+        if (outlineObject != null)
+            outlineObject.SetActive(selected);
     }
 
-    // ── Internal ──────────────────────────────────────────────────────────────
-
-    void CreateOutline()
+    void EnsureOutline()
     {
-        if (_outlineGO != null) return;
-
-        Shader outlineShader = Shader.Find("Custom/SelectionOutline");
-        if (outlineShader == null)
+        if (outlineObject != null)
         {
-            Debug.LogWarning("ObjectOutline: 'Custom/SelectionOutline' shader not found.");
+            ApplyProperties();
             return;
         }
 
-        var sourceMF = GetComponent<MeshFilter>();
-        if (sourceMF == null || sourceMF.sharedMesh == null) return;
+        var sourceFilter = GetComponent<MeshFilter>();
+        if (sourceFilter == null || sourceFilter.sharedMesh == null)
+            return;
 
-        var mat = new Material(outlineShader);
-        mat.SetColor("_OutlineColor", outlineColor);
-        mat.SetFloat("_OutlineWidth", outlineWidth);
+        var outlineShader = Shader.Find("Custom/SelectionOutline");
+        if (outlineShader == null)
+        {
+            Debug.LogWarning("ObjectOutline: Custom/SelectionOutline shader not found.", this);
+            return;
+        }
 
-        _outlineGO = new GameObject("__Outline__");
-        _outlineGO.transform.SetParent(transform, false);
-        _outlineGO.transform.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
-        _outlineGO.transform.localScale = Vector3.one;
+        outlineObject = new GameObject("__SelectionOutline__");
+        outlineObject.transform.SetParent(transform, false);
+        outlineObject.transform.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
+        outlineObject.transform.localScale = Vector3.one;
+        outlineObject.SetActive(false);
 
-        var mf        = _outlineGO.AddComponent<MeshFilter>();
-        mf.sharedMesh = sourceMF.sharedMesh;
+        var outlineFilter = outlineObject.AddComponent<MeshFilter>();
+        outlineFilter.sharedMesh = sourceFilter.sharedMesh;
 
-        var mr        = _outlineGO.AddComponent<MeshRenderer>();
-        mr.material   = mat;
-        mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        mr.receiveShadows    = false;
+        outlineRenderer = outlineObject.AddComponent<MeshRenderer>();
+        outlineRenderer.sharedMaterial = new Material(outlineShader)
+        {
+            name = $"{name} Selection Outline"
+        };
+        outlineRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        outlineRenderer.receiveShadows = false;
+        outlineRenderer.allowOcclusionWhenDynamic = false;
+
+        ApplyProperties();
     }
 
-    void DestroyOutline()
+    void ApplyProperties()
     {
-        if (_outlineGO == null) return;
+        if (outlineRenderer == null)
+            return;
 
-        // Destroy the temp material too.
-        var mr = _outlineGO.GetComponent<MeshRenderer>();
-        if (mr != null) Destroy(mr.material);
-
-        DestroyImmediate(_outlineGO);
-        _outlineGO = null;
+        propertyBlock ??= new MaterialPropertyBlock();
+        outlineRenderer.GetPropertyBlock(propertyBlock);
+        propertyBlock.SetColor(OutlineColorId, outlineColor);
+        propertyBlock.SetFloat(OutlineWidthId, outlineWidth);
+        outlineRenderer.SetPropertyBlock(propertyBlock);
     }
 
-    void OnDestroy() => DestroyOutline();
+    void OnValidate()
+    {
+        outlineWidth = Mathf.Max(0f, outlineWidth);
+        ApplyProperties();
+    }
+
+    void OnDestroy()
+    {
+        if (outlineRenderer != null)
+            Destroy(outlineRenderer.sharedMaterial);
+    }
 }

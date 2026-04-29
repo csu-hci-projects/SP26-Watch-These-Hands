@@ -2,31 +2,31 @@ Shader "Custom/SelectionOutline"
 {
     Properties
     {
-        _OutlineColor ("Outline Color", Color) = (1, 0.5, 0, 1)
-        _OutlineWidth ("Outline Width (scale factor)", Float) = 0.05
+        _OutlineColor ("Outline Color", Color) = (1, 0.55, 0.05, 1)
+        _OutlineWidth ("Outline Width", Float) = 0.03
     }
+
     SubShader
     {
-        // Render BEFORE the cube (Geometry = 2000) so the cube paints over the
-        // center and only the scaled border remains visible.
         Tags
         {
-            "RenderType"     = "Opaque"
-            "Queue"          = "Geometry-1"
+            "RenderType" = "Transparent"
+            "Queue" = "Transparent+20"
             "RenderPipeline" = "UniversalPipeline"
         }
 
         Pass
         {
-            Name "Outline"
+            Name "InvertedHullOutline"
             Tags { "LightMode" = "UniversalForward" }
 
-            Cull Back       // normal front-face rendering
-            ZWrite Off      // don't stomp depth so cube still overwrites us
+            Cull Front
+            ZWrite Off
             ZTest LEqual
+            Blend SrcAlpha OneMinusSrcAlpha
 
             HLSLPROGRAM
-            #pragma vertex   vert
+            #pragma vertex vert
             #pragma fragment frag
             #pragma multi_compile_instancing
 
@@ -34,7 +34,7 @@ Shader "Custom/SelectionOutline"
 
             CBUFFER_START(UnityPerMaterial)
                 float4 _OutlineColor;
-                float  _OutlineWidth;
+                float _OutlineWidth;
             CBUFFER_END
 
             struct Attributes
@@ -46,6 +46,7 @@ Shader "Custom/SelectionOutline"
             struct Varyings
             {
                 float4 positionCS : SV_POSITION;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
                 UNITY_VERTEX_OUTPUT_STEREO
             };
 
@@ -53,15 +54,18 @@ Shader "Custom/SelectionOutline"
             {
                 Varyings output;
                 UNITY_SETUP_INSTANCE_ID(input);
+                UNITY_TRANSFER_INSTANCE_ID(input, output);
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(output);
-                // Uniformly scale the mesh outward — no normal math, no edge cases.
-                float3 scaled = input.positionOS.xyz * (1.0 + _OutlineWidth);
-                output.positionCS = TransformObjectToHClip(float4(scaled, 1.0));
+
+                // Uniform shell scaling works better for hard-edged primitives like cubes.
+                float3 positionOS = input.positionOS.xyz * (1.0 + _OutlineWidth);
+                output.positionCS = TransformObjectToHClip(float4(positionOS, 1.0));
                 return output;
             }
 
             half4 frag(Varyings input) : SV_Target
             {
+                UNITY_SETUP_INSTANCE_ID(input);
                 UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
                 return _OutlineColor;
             }

@@ -119,4 +119,7 @@ $RECYCLE.BIN/
 # Windows shortcuts
 *.lnk
 
+# Local AI handoff notes
+AI_HANDOFF.md
+
 # End of https://www.toptal.com/developers/gitignore/api/unity,windows,visualstudiocode

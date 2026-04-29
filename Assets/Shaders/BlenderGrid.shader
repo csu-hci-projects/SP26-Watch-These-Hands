@@ -7,6 +7,8 @@ Shader "Custom/BlenderGrid"
         _GridScale      ("Main Grid Scale", Float)  = 1.0
         _SubDivisions   ("Sub Divisions",   Float)  = 10.0
         _LineWidth      ("Anti-alias Width",Float)  = 1.0
+        _FadeStart      ("Fade Start",      Float)  = 8.0
+        _FadeEnd        ("Fade End",        Float)  = 22.0
     }
     SubShader
     {
@@ -36,6 +38,8 @@ Shader "Custom/BlenderGrid"
                 float  _GridScale;
                 float  _SubDivisions;
                 float  _LineWidth;
+                float  _FadeStart;
+                float  _FadeEnd;
             CBUFFER_END
 
             struct Attributes
@@ -48,6 +52,7 @@ Shader "Custom/BlenderGrid"
             {
                 float4 positionCS : SV_POSITION;
                 float3 worldPos   : TEXCOORD0;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
                 UNITY_VERTEX_OUTPUT_STEREO
             };
 
@@ -55,6 +60,7 @@ Shader "Custom/BlenderGrid"
             {
                 Varyings o;
                 UNITY_SETUP_INSTANCE_ID(input);
+                UNITY_TRANSFER_INSTANCE_ID(input, o);
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
                 o.positionCS = TransformObjectToHClip(input.positionOS);
                 o.worldPos   = TransformObjectToWorld(input.positionOS).xyz;
@@ -65,18 +71,20 @@ Shader "Custom/BlenderGrid"
             float GridLine(float2 xz, float scale, float lineWidth)
             {
                 float2 coord = xz / scale;
-                float2 d     = abs(frac(coord - 0.5) - 0.5) / (fwidth(coord) * lineWidth);
+                float2 width = max(fwidth(coord) * lineWidth, 0.0001);
+                float2 d     = abs(frac(coord - 0.5) - 0.5) / width;
                 return 1.0 - saturate(min(d.x, d.y));
             }
 
             // Returns 1 on the axis line at coord == 0.
             float AxisLine(float coord, float pixelWidth)
             {
-                return 1.0 - saturate(abs(coord) / (fwidth(coord) * pixelWidth));
+                return 1.0 - saturate(abs(coord) / max(fwidth(coord) * pixelWidth, 0.0001));
             }
 
             half4 frag(Varyings input) : SV_Target
             {
+                UNITY_SETUP_INSTANCE_ID(input);
                 UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
                 float2 xz = input.worldPos.xz;
 
@@ -97,6 +105,10 @@ Shader "Custom/BlenderGrid"
                 // Layer axis lines on top of everything
                 col = lerp(col, half4(0.53, 0.11, 0.11, 1), xAxis);
                 col = lerp(col, half4(0.22, 0.47, 0.22, 1), zAxis);
+
+                float distanceToCamera = distance(GetCameraPositionWS(), input.worldPos);
+                float fade = 1.0 - smoothstep(_FadeStart, max(_FadeStart + 0.001, _FadeEnd), distanceToCamera);
+                col.a *= fade;
 
                 return col;
             }

@@ -1,98 +1,176 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.XR.Interaction.Toolkit;
+using UnityEngine.XR.Interaction.Toolkit.Interactables;
+using UnityEngine.XR.Interaction.Toolkit.Interactors;
 
 /// <summary>
-/// Ray-based object selection from the right controller.
-/// Right trigger (pressed) = select object under ray / deselect on miss.
-/// Drives VRTransformTool target and VRViewportCamera pivot — drop-in VR
-/// equivalent of SelectionManager.cs.
+/// Selection bridge between the project marker component and XR Interaction Toolkit.
+/// XRI handles hover/select/grab; this class keeps the current modeling target and outline in sync.
 /// </summary>
 public class VRSelectionManager : MonoBehaviour
 {
     public static VRSelectionManager Instance { get; private set; }
 
-    [Header("References")]
-    [Tooltip("Right Controller transform — assign the Right Controller child of XR Origin.")]
-    [SerializeField] Transform rayOrigin;
-
-    [Header("Input Actions")]
-    [Tooltip("Right trigger pressed — XRI RightHand/Select")]
+    [Header("Right Hand Selection")]
+    [SerializeField] Transform rightControllerRoot;
     [SerializeField] InputActionReference selectAction;
 
-    [Header("Settings")]
-    [SerializeField] float     maxRayDistance = 100f;
-    [SerializeField] LayerMask raycastMask    = ~0;
+    readonly List<VRModelingInteractable> registeredInteractables = new();
 
-    SelectableObject _selected;
-    ObjectOutline    _outline;
+    SelectableObject selected;
+    ObjectOutline selectedOutline;
+    XRRayInteractor rightRayInteractor;
 
-    void Awake() => Instance = this;
+    public SelectableObject Selected => selected;
+    public XRRayInteractor RightRayInteractor => rightRayInteractor;
+    public System.Action<SelectableObject> SelectionChanged;
+    public bool IsSelectionGrabbed =>
+        selected != null &&
+        selected.TryGetComponent<VRModelingInteractable>(out var modelingInteractable) &&
+        modelingInteractable.GrabInteractable != null &&
+        modelingInteractable.GrabInteractable.interactorsSelecting.Count > 0;
+
+    void Awake()
+    {
+        Instance = this;
+    }
 
     void OnEnable()
     {
-        if (selectAction == null) return;
-        selectAction.action.Enable();
-        selectAction.action.performed += OnSelectPerformed;
+        RegisterSceneInteractables();
+        ResolveRightRayInteractor();
+
+        if (selectAction != null)
+        {
+            selectAction.action.Enable();
+            selectAction.action.performed += OnSelectActionPerformed;
+        }
     }
 
     void OnDisable()
     {
-        if (selectAction == null) return;
-        selectAction.action.performed -= OnSelectPerformed;
-        selectAction.action.Disable();
-    }
-
-    void OnSelectPerformed(UnityEngine.InputSystem.InputAction.CallbackContext ctx)
-    {
-        if (VRTransformTool.Instance != null && VRTransformTool.Instance.IsTransforming) return;
-        TrySelect();
-    }
-
-    void Update() { }
-
-    void TrySelect()
-    {
-        if (rayOrigin == null) return;
-
-        Ray ray = new Ray(rayOrigin.position, rayOrigin.forward);
-
-        if (Physics.Raycast(ray, out RaycastHit hit, maxRayDistance, raycastMask))
+        if (selectAction != null)
         {
-            var selectable = hit.collider.GetComponent<SelectableObject>();
-            if (selectable != null)
-            {
-                Select(selectable);
-                return;
-            }
+            selectAction.action.performed -= OnSelectActionPerformed;
+            selectAction.action.Disable();
         }
 
-        Deselect();
+        foreach (var interactable in registeredInteractables)
+        {
+            if (interactable == null || interactable.GrabInteractable == null)
+                continue;
+
+            interactable.GrabInteractable.selectEntered.RemoveListener(OnXriSelectEntered);
+        }
+
+        registeredInteractables.Clear();
     }
 
-    void Select(SelectableObject target)
+    public void RegisterSceneInteractables()
     {
-        if (_selected == target) return;
-
-        Deselect();
-        _selected = target;
-
-        _outline = target.GetComponent<ObjectOutline>();
-        if (_outline == null)
-            _outline = target.gameObject.AddComponent<ObjectOutline>();
-        _outline.SetSelected(true);
-
-        VRTransformTool.Instance?.SetTarget(target.transform);
-        VRViewportCamera.Instance?.SetPivot(target.transform.position);
+        var selectableObjects = FindObjectsByType<SelectableObject>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        foreach (var selectableObject in selectableObjects)
+            Register(selectableObject);
     }
 
-    void Deselect()
+    public void Register(SelectableObject selectableObject)
     {
-        if (_selected == null) return;
+        if (selectableObject == null)
+            return;
 
-        _outline?.SetSelected(false);
-        _outline = null;
+        var modelingInteractable = selectableObject.GetComponent<VRModelingInteractable>();
+        if (modelingInteractable == null)
+            modelingInteractable = selectableObject.gameObject.AddComponent<VRModelingInteractable>();
+        else
+            modelingInteractable.Configure();
 
-        VRTransformTool.Instance?.SetTarget(null);
-        _selected = null;
+        if (registeredInteractables.Contains(modelingInteractable))
+            return;
+
+        registeredInteractables.Add(modelingInteractable);
+        modelingInteractable.GrabInteractable.selectEntered.AddListener(OnXriSelectEntered);
+    }
+
+    void ResolveRightRayInteractor()
+    {
+        if (rightRayInteractor != null)
+            return;
+
+        if (rightControllerRoot != null)
+            rightRayInteractor = rightControllerRoot.GetComponentInChildren<XRRayInteractor>(true);
+
+        if (rightRayInteractor == null)
+            rightRayInteractor = FindFirstObjectByType<XRRayInteractor>(FindObjectsInactive.Exclude);
+
+        ConfigureRayInteractors();
+    }
+
+    void ConfigureRayInteractors()
+    {
+        var rayInteractors = FindObjectsByType<XRRayInteractor>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        foreach (var rayInteractor in rayInteractors)
+        {
+            if (rayInteractor == null)
+                continue;
+
+            rayInteractor.manipulateAttachTransform = false;
+            rayInteractor.useForceGrab = false;
+        }
+    }
+
+    void OnXriSelectEntered(SelectEnterEventArgs args)
+    {
+        var selectableObject = args.interactableObject.transform.GetComponentInParent<SelectableObject>();
+        Select(selectableObject);
+    }
+
+    void OnSelectActionPerformed(InputAction.CallbackContext context)
+    {
+        if (selected == null || IsSelectionGrabbed)
+            return;
+
+        ResolveRightRayInteractor();
+
+        if (rightRayInteractor == null)
+            return;
+
+        if (!rightRayInteractor.TryGetCurrent3DRaycastHit(out var hit))
+        {
+            Deselect();
+            return;
+        }
+
+        var hitSelectable = hit.collider != null ? hit.collider.GetComponentInParent<SelectableObject>() : null;
+        if (hitSelectable == null)
+            Deselect();
+    }
+
+    public void Select(SelectableObject target)
+    {
+        if (target == null || selected == target)
+            return;
+
+        Deselect();
+        Register(target);
+
+        selected = target;
+        selectedOutline = target.GetComponent<ObjectOutline>();
+        if (selectedOutline == null)
+            selectedOutline = target.gameObject.AddComponent<ObjectOutline>();
+
+        selectedOutline.SetSelected(true);
+        SelectionChanged?.Invoke(selected);
+    }
+
+    public void Deselect()
+    {
+        if (selectedOutline != null)
+            selectedOutline.SetSelected(false);
+
+        selectedOutline = null;
+        selected = null;
+        SelectionChanged?.Invoke(null);
     }
 }

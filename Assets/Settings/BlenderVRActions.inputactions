@@ -86,7 +86,7 @@
                 {
                     "name": "",
                     "id": "a1b2c3d4-0002-0001-0001-000000000030",
-                    "path": "<XRController>{LeftHand}/primaryButton",
+                    "path": "<XRController>{RightHand}/primaryButton",
                     "interactions": "",
                     "processors": "",
                     "groups": "",
