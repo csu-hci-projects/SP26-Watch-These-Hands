@@ -1367,10 +1367,13 @@ MonoBehaviour:
   viewCamera: {fileID: 1821400757}
   handLocalOffset: {x: -0.09, y: -0.035, z: 0.08}
   viewLocalOffset: {x: -0.28, y: -0.18, z: 0.55}
+  rigLocalOffset: {x: -0.28, y: 1.2, z: 0.55}
   faceCamera: 1
   followSmoothing: 18
   menuSize: {x: 0.18, y: 0.25}
   canvasScale: 0.001
+  buildMenuAtRuntime: 1
+  hideUnlessTrackedHand: 1
   transformTool: {fileID: 465337178}
   panelColor: {r: 0.02, g: 0.025, b: 0.03, a: 0.88}
   inactiveButtonColor: {r: 0.18, g: 0.2, b: 0.23, a: 0.92}
@@ -4440,9 +4443,9 @@ MonoBehaviour:
   rightGrabInteractors:
   - {fileID: 954077134}
   - {fileID: 866223918}
-  pokeUiInteractors:
-  - {fileID: 954077134}
-  - {fileID: 304230747}
+  menuUiHands: 0
+  leftPokeUiInteractors: []
+  rightPokeUiInteractors: []
   nonPokeUiInteractors:
   - {fileID: 866223918}
   - {fileID: 1556339336}
