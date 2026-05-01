@@ -118,10 +118,10 @@ public class VRModelingInteractable : MonoBehaviour
         switch (mode)
         {
             case ToolMode.Translate:
-                grabInteractable.trackPosition = true;
+                grabInteractable.trackPosition = false;
                 grabInteractable.trackRotation = false;
                 grabInteractable.trackScale = false;
-                grabTransformer.permittedDisplacementAxes = ToManipulationAxes(axis);
+                grabTransformer.permittedDisplacementAxes = 0;
                 break;
 
             case ToolMode.Rotate:

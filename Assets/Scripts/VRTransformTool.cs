@@ -4,8 +4,8 @@ using UnityEngine.InputSystem;
 using UnityEngine.Serialization;
 
 /// <summary>
-/// Explicit rotate/scale mode layer for the VR study controls.
-/// The selected object is grabbed normally, but rotate/scale are driven by the right stick.
+/// Explicit translate/rotate/scale mode layer for the VR study controls.
+/// All three modes are driven by XRI-selectable gizmos.
 /// </summary>
 public class VRTransformTool : MonoBehaviour
 {
@@ -14,11 +14,13 @@ public class VRTransformTool : MonoBehaviour
     enum Mode
     {
         None,
+        Translate,
         Rotate,
         Scale
     }
 
     [Header("Optional UI")]
+    [SerializeField] TMP_Text translateLabel;
     [SerializeField] TMP_Text rotateLabel;
     [FormerlySerializedAs("moveLabel")]
     [SerializeField] TMP_Text scaleLabel;
@@ -27,33 +29,28 @@ public class VRTransformTool : MonoBehaviour
     [SerializeField] TextMeshProUGUI statusText;
 
     [Header("Input Actions")]
+    [SerializeField] InputActionReference translateAction;
     [SerializeField] InputActionReference rotateAction;
     [FormerlySerializedAs("moveAction")]
     [SerializeField] InputActionReference scaleAction;
-    [FormerlySerializedAs("gizmoAction")]
-    [FormerlySerializedAs("selectAction")]
-    [SerializeField] InputActionReference joystickAction;
     [SerializeField] InputActionReference cancelAction;
-
-    [Header("Mode Tuning")]
-    [SerializeField] float stickDeadzone = 0.2f;
-    [SerializeField] float rotateYawSpeed = 120f;
-    [SerializeField] float rotatePitchSpeed = 90f;
-    [SerializeField] float scaleSpeed = 1.2f;
-    [SerializeField] float minimumUniformScale = 0.05f;
-    [SerializeField] float maximumUniformScale = 20f;
 
     Mode mode = Mode.None;
     VRModelingInteractable activeInteractable;
     Transform activeTarget;
+    VRTranslationGizmo translationGizmo;
+    VRRotationGizmo rotationGizmo;
+    VRScaleGizmo scaleGizmo;
     bool manipulating;
-    Vector3 lockedPosition;
-    Quaternion lockedRotation;
 
     public bool IsTransforming => mode != Mode.None && manipulating;
-
-    // Kept for VRViewportCamera compatibility with the temporary gizmo experiment.
-    public bool IsManipulatingGizmo => IsTransforming;
+    public bool IsManipulatingGizmo =>
+        (translationGizmo != null && translationGizmo.IsDragging) ||
+        (rotationGizmo != null && rotationGizmo.IsDragging) ||
+        (scaleGizmo != null && scaleGizmo.IsDragging);
+    public bool IsTranslationGizmoVisible => mode == Mode.Translate && activeTarget != null;
+    public bool IsRotationGizmoVisible => mode == Mode.Rotate && activeTarget != null;
+    public bool IsScaleGizmoVisible => mode == Mode.Scale && activeTarget != null;
 
     void Awake()
     {
@@ -62,9 +59,9 @@ public class VRTransformTool : MonoBehaviour
 
     void OnEnable()
     {
+        translateAction?.action.Enable();
         rotateAction?.action.Enable();
         scaleAction?.action.Enable();
-        joystickAction?.action.Enable();
         cancelAction?.action.Enable();
         RefreshUi();
     }
@@ -74,9 +71,9 @@ public class VRTransformTool : MonoBehaviour
         if (activeInteractable != null)
             activeInteractable.ApplyMode(VRModelingInteractable.ToolMode.Free, VRModelingInteractable.Axis.Free);
 
+        translateAction?.action.Disable();
         rotateAction?.action.Disable();
         scaleAction?.action.Disable();
-        joystickAction?.action.Disable();
         cancelAction?.action.Disable();
     }
 
@@ -90,7 +87,9 @@ public class VRTransformTool : MonoBehaviour
 
     void HandleModeToggle()
     {
-        if (rotateAction != null && rotateAction.action.WasPressedThisFrame())
+        if (translateAction != null && translateAction.action.WasPressedThisFrame())
+            SetMode(mode == Mode.Translate ? Mode.None : Mode.Translate);
+        else if (rotateAction != null && rotateAction.action.WasPressedThisFrame())
             SetMode(mode == Mode.Rotate ? Mode.None : Mode.Rotate);
         else if (scaleAction != null && scaleAction.action.WasPressedThisFrame())
             SetMode(mode == Mode.Scale ? Mode.None : Mode.Scale);
@@ -106,6 +105,9 @@ public class VRTransformTool : MonoBehaviour
         mode = newMode;
         manipulating = false;
         ApplyModeToActiveInteractable();
+        RefreshTranslationGizmo();
+        RefreshRotationGizmo();
+        RefreshScaleGizmo();
         RefreshUi();
     }
 
@@ -124,6 +126,9 @@ public class VRTransformTool : MonoBehaviour
         activeTarget = activeInteractable != null ? activeInteractable.transform : null;
         manipulating = false;
         ApplyModeToActiveInteractable();
+        RefreshTranslationGizmo();
+        RefreshRotationGizmo();
+        RefreshScaleGizmo();
     }
 
     void ApplyModeToActiveInteractable()
@@ -133,6 +138,7 @@ public class VRTransformTool : MonoBehaviour
 
         var nativeMode = mode switch
         {
+            Mode.Translate => VRModelingInteractable.ToolMode.Translate,
             Mode.Rotate => VRModelingInteractable.ToolMode.Rotate,
             Mode.Scale => VRModelingInteractable.ToolMode.Scale,
             _ => VRModelingInteractable.ToolMode.Free,
@@ -143,97 +149,65 @@ public class VRTransformTool : MonoBehaviour
 
     void UpdateManipulation()
     {
-        if (activeInteractable == null || activeTarget == null || mode == Mode.None)
+        if (mode == Mode.Translate)
         {
-            manipulating = false;
+            manipulating = translationGizmo != null && translationGizmo.IsDragging;
             return;
         }
 
-        bool isGrabbed = activeInteractable.GrabInteractable != null &&
-            activeInteractable.GrabInteractable.interactorsSelecting.Count > 0;
-
-        if (!isGrabbed)
+        if (mode == Mode.Rotate)
         {
-            manipulating = false;
+            manipulating = rotationGizmo != null && rotationGizmo.IsDragging;
             return;
         }
 
-        if (!manipulating)
-            BeginManipulation();
-
-        var stick = ApplyDeadzone(joystickAction?.action.ReadValue<Vector2>() ?? Vector2.zero, stickDeadzone);
-        if (stick == Vector2.zero)
-        {
-            PreserveLockedPose();
-            return;
-        }
-
-        switch (mode)
-        {
-            case Mode.Rotate:
-                ApplyRotate(stick);
-                break;
-
-            case Mode.Scale:
-                ApplyScale(stick);
-                break;
-        }
-    }
-
-    void BeginManipulation()
-    {
-        manipulating = true;
-        lockedPosition = activeTarget.position;
-        lockedRotation = activeTarget.rotation;
-    }
-
-    void PreserveLockedPose()
-    {
-        activeTarget.position = lockedPosition;
         if (mode == Mode.Scale)
-            activeTarget.rotation = lockedRotation;
-    }
-
-    void ApplyRotate(Vector2 stick)
-    {
-        activeTarget.position = lockedPosition;
-
-        float dt = Time.deltaTime;
-        if (Mathf.Abs(stick.x) > 0.0001f)
-            activeTarget.Rotate(Vector3.up, -stick.x * rotateYawSpeed * dt, Space.World);
-
-        if (Mathf.Abs(stick.y) > 0.0001f)
         {
-            var cameraTransform = Camera.main != null ? Camera.main.transform : null;
-            var pitchAxis = cameraTransform != null ? cameraTransform.right : Vector3.right;
-            activeTarget.Rotate(pitchAxis, stick.y * rotatePitchSpeed * dt, Space.World);
+            manipulating = scaleGizmo != null && scaleGizmo.IsDragging;
+            return;
         }
+
+        manipulating = false;
     }
 
-    void ApplyScale(Vector2 stick)
+    void RefreshTranslationGizmo()
     {
-        activeTarget.position = lockedPosition;
-        activeTarget.rotation = lockedRotation;
+        if (translationGizmo == null)
+        {
+            var gizmoObject = new GameObject("VR Translation Gizmo");
+            translationGizmo = gizmoObject.AddComponent<VRTranslationGizmo>();
+        }
 
-        float delta = stick.y * scaleSpeed * Time.deltaTime;
-        if (Mathf.Abs(delta) <= 0.0001f)
-            return;
+        translationGizmo.SetTarget(mode == Mode.Translate ? activeTarget : null);
+    }
 
-        float scaleFactor = Mathf.Exp(delta);
-        var scale = activeTarget.localScale * scaleFactor;
-        float largest = Mathf.Max(scale.x, scale.y, scale.z);
-        if (largest > maximumUniformScale)
-            scale *= maximumUniformScale / Mathf.Max(0.0001f, largest);
+    void RefreshRotationGizmo()
+    {
+        if (rotationGizmo == null)
+        {
+            var gizmoObject = new GameObject("VR Rotation Gizmo");
+            rotationGizmo = gizmoObject.AddComponent<VRRotationGizmo>();
+        }
 
-        float smallest = Mathf.Min(scale.x, scale.y, scale.z);
-        if (smallest < minimumUniformScale)
-            scale *= minimumUniformScale / Mathf.Max(0.0001f, smallest);
+        rotationGizmo.SetTarget(mode == Mode.Rotate ? activeTarget : null);
+    }
 
-        activeTarget.localScale = scale;
+    void RefreshScaleGizmo()
+    {
+        if (scaleGizmo == null)
+        {
+            var gizmoObject = new GameObject("VR Scale Gizmo");
+            scaleGizmo = gizmoObject.AddComponent<VRScaleGizmo>();
+        }
+
+        scaleGizmo.SetTarget(mode == Mode.Scale ? activeTarget : null);
     }
 
     void RefreshUi()
     {
+        if (translateLabel != null)
+            translateLabel.color = mode == Mode.Translate ? activeColor : inactiveColor;
+
         if (rotateLabel != null)
             rotateLabel.color = mode == Mode.Rotate ? activeColor : inactiveColor;
 
@@ -245,19 +219,10 @@ public class VRTransformTool : MonoBehaviour
 
         statusText.text = mode switch
         {
-            Mode.Rotate => "Rotate mode: grab selected object, then use right stick",
-            Mode.Scale => "Scale mode: grab selected object, then use right stick up/down",
+            Mode.Translate => "Translate mode: grab a colored arrow handle",
+            Mode.Rotate => "Rotate mode: grab a colored ring",
+            Mode.Scale => "Scale mode: grab a colored arrow handle",
             _ => ""
         };
-    }
-
-    static Vector2 ApplyDeadzone(Vector2 value, float deadzone)
-    {
-        float magnitude = value.magnitude;
-        if (magnitude <= deadzone)
-            return Vector2.zero;
-
-        float scaledMagnitude = (magnitude - deadzone) / Mathf.Max(0.0001f, 1f - deadzone);
-        return value.normalized * scaledMagnitude;
     }
 }

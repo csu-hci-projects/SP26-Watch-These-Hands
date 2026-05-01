@@ -131,6 +131,12 @@ public class VRSelectionManager : MonoBehaviour
         if (selected == null || IsSelectionGrabbed)
             return;
 
+        if (VRTransformTool.Instance != null &&
+            (VRTransformTool.Instance.IsTranslationGizmoVisible ||
+             VRTransformTool.Instance.IsRotationGizmoVisible ||
+             VRTransformTool.Instance.IsScaleGizmoVisible))
+            return;
+
         ResolveRightRayInteractor();
 
         if (rightRayInteractor == null)
@@ -141,6 +147,15 @@ public class VRSelectionManager : MonoBehaviour
             Deselect();
             return;
         }
+
+        if (hit.collider != null && hit.collider.GetComponentInParent<VRGizmoRingHandle>() != null)
+            return;
+
+        if (hit.collider != null && hit.collider.GetComponentInParent<VRGizmoScaleHandle>() != null)
+            return;
+
+        if (hit.collider != null && hit.collider.GetComponentInParent<VRGizmoTranslationHandle>() != null)
+            return;
 
         var hitSelectable = hit.collider != null ? hit.collider.GetComponentInParent<SelectableObject>() : null;
         if (hitSelectable == null)
