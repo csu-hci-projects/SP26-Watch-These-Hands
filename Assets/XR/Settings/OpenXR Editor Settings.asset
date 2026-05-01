@@ -14,7 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Unity.XR.OpenXR.Editor::UnityEditor.XR.OpenXR.OpenXREditorSettings
   Keys: 0700000001000000
   Values:
-  - featureSets: []
+  - featureSets:
+    - com.unity.openxr.featureset.android
   - featureSets:
     - com.unity.openxr.featureset.android
   m_vulkanAdditionalGraphicsQueue: 0

@@ -11,7 +11,7 @@ public class VRTransformTool : MonoBehaviour
 {
     public static VRTransformTool Instance { get; private set; }
 
-    enum Mode
+    public enum ToolMode
     {
         None,
         Translate,
@@ -35,7 +35,7 @@ public class VRTransformTool : MonoBehaviour
     [SerializeField] InputActionReference scaleAction;
     [SerializeField] InputActionReference cancelAction;
 
-    Mode mode = Mode.None;
+    ToolMode mode = ToolMode.None;
     VRModelingInteractable activeInteractable;
     Transform activeTarget;
     VRTranslationGizmo translationGizmo;
@@ -43,14 +43,18 @@ public class VRTransformTool : MonoBehaviour
     VRScaleGizmo scaleGizmo;
     bool manipulating;
 
-    public bool IsTransforming => mode != Mode.None && manipulating;
+    public ToolMode ActiveMode => mode;
+    public bool IsTransforming => mode != ToolMode.None && manipulating;
     public bool IsManipulatingGizmo =>
         (translationGizmo != null && translationGizmo.IsDragging) ||
         (rotationGizmo != null && rotationGizmo.IsDragging) ||
         (scaleGizmo != null && scaleGizmo.IsDragging);
-    public bool IsTranslationGizmoVisible => mode == Mode.Translate && activeTarget != null;
-    public bool IsRotationGizmoVisible => mode == Mode.Rotate && activeTarget != null;
-    public bool IsScaleGizmoVisible => mode == Mode.Scale && activeTarget != null;
+    public bool IsTranslationGizmoVisible => mode == ToolMode.Translate && activeTarget != null;
+    public bool IsRotationGizmoVisible => mode == ToolMode.Rotate && activeTarget != null;
+    public bool IsScaleGizmoVisible => mode == ToolMode.Scale && activeTarget != null;
+    public bool IsTranslateModeActive => mode == ToolMode.Translate;
+    public bool IsRotateModeActive => mode == ToolMode.Rotate;
+    public bool IsScaleModeActive => mode == ToolMode.Scale;
 
     void Awake()
     {
@@ -64,6 +68,41 @@ public class VRTransformTool : MonoBehaviour
         scaleAction?.action.Enable();
         cancelAction?.action.Enable();
         RefreshUi();
+    }
+
+    public void ToggleTranslateMode()
+    {
+        SetMode(mode == ToolMode.Translate ? ToolMode.None : ToolMode.Translate);
+    }
+
+    public void ToggleRotateMode()
+    {
+        SetMode(mode == ToolMode.Rotate ? ToolMode.None : ToolMode.Rotate);
+    }
+
+    public void ToggleScaleMode()
+    {
+        SetMode(mode == ToolMode.Scale ? ToolMode.None : ToolMode.Scale);
+    }
+
+    public void ClearMode()
+    {
+        SetMode(ToolMode.None);
+    }
+
+    public void SetTranslateMode()
+    {
+        SetMode(ToolMode.Translate);
+    }
+
+    public void SetRotateMode()
+    {
+        SetMode(ToolMode.Rotate);
+    }
+
+    public void SetScaleMode()
+    {
+        SetMode(ToolMode.Scale);
     }
 
     void OnDisable()
@@ -88,16 +127,16 @@ public class VRTransformTool : MonoBehaviour
     void HandleModeToggle()
     {
         if (translateAction != null && translateAction.action.WasPressedThisFrame())
-            SetMode(mode == Mode.Translate ? Mode.None : Mode.Translate);
+            ToggleTranslateMode();
         else if (rotateAction != null && rotateAction.action.WasPressedThisFrame())
-            SetMode(mode == Mode.Rotate ? Mode.None : Mode.Rotate);
+            ToggleRotateMode();
         else if (scaleAction != null && scaleAction.action.WasPressedThisFrame())
-            SetMode(mode == Mode.Scale ? Mode.None : Mode.Scale);
+            ToggleScaleMode();
         else if (cancelAction != null && cancelAction.action.WasPressedThisFrame())
-            SetMode(Mode.None);
+            ClearMode();
     }
 
-    void SetMode(Mode newMode)
+    void SetMode(ToolMode newMode)
     {
         if (mode == newMode)
             return;
@@ -138,9 +177,9 @@ public class VRTransformTool : MonoBehaviour
 
         var nativeMode = mode switch
         {
-            Mode.Translate => VRModelingInteractable.ToolMode.Translate,
-            Mode.Rotate => VRModelingInteractable.ToolMode.Rotate,
-            Mode.Scale => VRModelingInteractable.ToolMode.Scale,
+            ToolMode.Translate => VRModelingInteractable.ToolMode.Translate,
+            ToolMode.Rotate => VRModelingInteractable.ToolMode.Rotate,
+            ToolMode.Scale => VRModelingInteractable.ToolMode.Scale,
             _ => VRModelingInteractable.ToolMode.Free,
         };
 
@@ -149,19 +188,19 @@ public class VRTransformTool : MonoBehaviour
 
     void UpdateManipulation()
     {
-        if (mode == Mode.Translate)
+        if (mode == ToolMode.Translate)
         {
             manipulating = translationGizmo != null && translationGizmo.IsDragging;
             return;
         }
 
-        if (mode == Mode.Rotate)
+        if (mode == ToolMode.Rotate)
         {
             manipulating = rotationGizmo != null && rotationGizmo.IsDragging;
             return;
         }
 
-        if (mode == Mode.Scale)
+        if (mode == ToolMode.Scale)
         {
             manipulating = scaleGizmo != null && scaleGizmo.IsDragging;
             return;
@@ -178,7 +217,7 @@ public class VRTransformTool : MonoBehaviour
             translationGizmo = gizmoObject.AddComponent<VRTranslationGizmo>();
         }
 
-        translationGizmo.SetTarget(mode == Mode.Translate ? activeTarget : null);
+        translationGizmo.SetTarget(mode == ToolMode.Translate ? activeTarget : null);
     }
 
     void RefreshRotationGizmo()
@@ -189,7 +228,7 @@ public class VRTransformTool : MonoBehaviour
             rotationGizmo = gizmoObject.AddComponent<VRRotationGizmo>();
         }
 
-        rotationGizmo.SetTarget(mode == Mode.Rotate ? activeTarget : null);
+        rotationGizmo.SetTarget(mode == ToolMode.Rotate ? activeTarget : null);
     }
 
     void RefreshScaleGizmo()
@@ -200,28 +239,28 @@ public class VRTransformTool : MonoBehaviour
             scaleGizmo = gizmoObject.AddComponent<VRScaleGizmo>();
         }
 
-        scaleGizmo.SetTarget(mode == Mode.Scale ? activeTarget : null);
+        scaleGizmo.SetTarget(mode == ToolMode.Scale ? activeTarget : null);
     }
 
     void RefreshUi()
     {
         if (translateLabel != null)
-            translateLabel.color = mode == Mode.Translate ? activeColor : inactiveColor;
+            translateLabel.color = mode == ToolMode.Translate ? activeColor : inactiveColor;
 
         if (rotateLabel != null)
-            rotateLabel.color = mode == Mode.Rotate ? activeColor : inactiveColor;
+            rotateLabel.color = mode == ToolMode.Rotate ? activeColor : inactiveColor;
 
         if (scaleLabel != null)
-            scaleLabel.color = mode == Mode.Scale ? activeColor : inactiveColor;
+            scaleLabel.color = mode == ToolMode.Scale ? activeColor : inactiveColor;
 
         if (statusText == null)
             return;
 
         statusText.text = mode switch
         {
-            Mode.Translate => "Translate mode: grab a colored arrow handle",
-            Mode.Rotate => "Rotate mode: grab a colored ring",
-            Mode.Scale => "Scale mode: grab a colored arrow handle",
+            ToolMode.Translate => "Translate mode: grab a colored arrow handle",
+            ToolMode.Rotate => "Rotate mode: grab a colored ring",
+            ToolMode.Scale => "Scale mode: grab a colored arrow handle",
             _ => ""
         };
     }
