@@ -22,7 +22,8 @@ public class VRRotationGizmo : MonoBehaviour
     [SerializeField] float tubeRadius = 0.015f;
     [SerializeField] float selectedScale = 1.6f;
     [SerializeField] float boundsPadding = 1.35f;
-    [SerializeField] float minimumVisibleRadius = 0.75f;
+    [SerializeField] float minimumVisibleRadius = 0.25f;
+    [SerializeField] float maximumVisibleRadius = 100f;
     [SerializeField] float rotationSensitivity = 0.45f;
     [SerializeField] bool debugLogging = true;
     [SerializeField] float debugLogInterval = 0.25f;
@@ -36,6 +37,7 @@ public class VRRotationGizmo : MonoBehaviour
     Vector3 lastDragVector;
     Vector3 dragAxisWorld;
     Quaternion startRotation;
+    float accumulatedRotationDelta;
     bool isDragging;
     float nextDebugLogTime;
 
@@ -93,11 +95,12 @@ public class VRRotationGizmo : MonoBehaviour
         if (!TryGetRingVector(activeHandle, activeInteractor, out var currentVector, out var currentPoint))
             return;
 
+        float frameDelta = Vector3.SignedAngle(lastDragVector, currentVector, dragAxisWorld) * rotationSensitivity;
+        accumulatedRotationDelta += frameDelta;
         lastDragVector = currentVector;
-        float delta = Vector3.SignedAngle(startVector, currentVector, dragAxisWorld) * rotationSensitivity;
-        target.rotation = Quaternion.AngleAxis(delta, dragAxisWorld) * startRotation;
+        target.rotation = Quaternion.AngleAxis(accumulatedRotationDelta, dragAxisWorld) * startRotation;
         activeHandle.Interactable.SetAttachPoint(currentPoint, dragAxisWorld);
-        DebugLogThrottled($"Drag axis={activeHandle.Axis} delta={delta:0.00} currentPoint={currentPoint} currentVector={currentVector}");
+        DebugLogThrottled($"Drag axis={activeHandle.Axis} frameDelta={frameDelta:0.00} accumulated={accumulatedRotationDelta:0.00} currentPoint={currentPoint} currentVector={currentVector}");
     }
 
     void SyncToTarget()
@@ -107,7 +110,7 @@ public class VRRotationGizmo : MonoBehaviour
 
     void UpdateGizmoScale()
     {
-        float desiredRadius = Mathf.Max(minimumVisibleRadius, EstimateTargetRadius() * boundsPadding);
+        float desiredRadius = Mathf.Clamp(EstimateTargetRadius() * boundsPadding, minimumVisibleRadius, maximumVisibleRadius);
         float scale = desiredRadius / Mathf.Max(0.0001f, radius);
         transform.localScale = Vector3.one * scale;
     }
@@ -181,6 +184,7 @@ public class VRRotationGizmo : MonoBehaviour
         activeHandle = handle;
         activeInteractor = interactor;
         startRotation = target.rotation;
+        accumulatedRotationDelta = 0f;
         isDragging = true;
         lastDragVector = startVector;
         activeHandle.Interactable.SetAttachPoint(startPoint, dragAxisWorld);
@@ -200,6 +204,7 @@ public class VRRotationGizmo : MonoBehaviour
         activeInteractor = null;
         dragAxisWorld = Vector3.zero;
         lastDragVector = Vector3.zero;
+        accumulatedRotationDelta = 0f;
         isDragging = false;
         DebugLog($"EndDrag axis={(handle != null ? handle.Axis.ToString() : "null")}");
         if (target != null)

@@ -32,8 +32,12 @@ public class VRModelingInteractable : MonoBehaviour
     XRGeneralGrabTransformer grabTransformer;
     VRPrimaryHandSelectFilter primaryHandFilter;
     Rigidbody body;
+    Collider[] rayBlockingColliders;
+    bool[] originalColliderEnabledStates;
     ToolMode currentMode = ToolMode.Free;
     Axis currentAxis = Axis.Free;
+    bool grabInteractableEnabledByTool = true;
+    bool rayBlockingSuppressed;
 
     public XRGrabInteractable GrabInteractable => grabInteractable;
 
@@ -57,6 +61,7 @@ public class VRModelingInteractable : MonoBehaviour
         if (grabInteractable == null)
             return;
 
+        SetRayBlockingSuppressed(false);
         grabInteractable.selectEntered.RemoveListener(OnGrabSelectionChanged);
         grabInteractable.selectExited.RemoveListener(OnGrabSelectionChanged);
     }
@@ -81,6 +86,8 @@ public class VRModelingInteractable : MonoBehaviour
         primaryHandFilter = GetComponent<VRPrimaryHandSelectFilter>();
         if (primaryHandFilter == null)
             primaryHandFilter = gameObject.AddComponent<VRPrimaryHandSelectFilter>();
+
+        CacheRayBlockingColliders();
 
         grabInteractable.selectMode = InteractableSelectMode.Multiple;
         grabInteractable.movementType = XRBaseInteractable.MovementType.Instantaneous;
@@ -118,6 +125,8 @@ public class VRModelingInteractable : MonoBehaviour
         switch (mode)
         {
             case ToolMode.Translate:
+                SetGrabInteractableEnabled(false);
+                SetRayBlockingSuppressed(true);
                 grabInteractable.trackPosition = false;
                 grabInteractable.trackRotation = false;
                 grabInteractable.trackScale = false;
@@ -125,6 +134,8 @@ public class VRModelingInteractable : MonoBehaviour
                 break;
 
             case ToolMode.Rotate:
+                SetGrabInteractableEnabled(false);
+                SetRayBlockingSuppressed(true);
                 grabInteractable.trackPosition = true;
                 grabInteractable.trackRotation = false;
                 grabInteractable.trackScale = false;
@@ -132,6 +143,8 @@ public class VRModelingInteractable : MonoBehaviour
                 break;
 
             case ToolMode.Scale:
+                SetGrabInteractableEnabled(false);
+                SetRayBlockingSuppressed(true);
                 grabInteractable.trackPosition = false;
                 grabInteractable.trackRotation = false;
                 grabInteractable.trackScale = false;
@@ -139,6 +152,8 @@ public class VRModelingInteractable : MonoBehaviour
                 break;
 
             default:
+                SetRayBlockingSuppressed(false);
+                SetGrabInteractableEnabled(true);
                 grabInteractable.trackPosition = true;
                 grabInteractable.trackRotation = false;
                 grabInteractable.trackScale = true;
@@ -147,6 +162,44 @@ public class VRModelingInteractable : MonoBehaviour
         }
 
         RefreshGrabBehavior();
+    }
+
+    void CacheRayBlockingColliders()
+    {
+        rayBlockingColliders = GetComponentsInChildren<Collider>(true);
+        originalColliderEnabledStates = new bool[rayBlockingColliders.Length];
+
+        for (int i = 0; i < rayBlockingColliders.Length; i++)
+            originalColliderEnabledStates[i] = rayBlockingColliders[i] != null && rayBlockingColliders[i].enabled;
+    }
+
+    void SetRayBlockingSuppressed(bool suppressed)
+    {
+        if (rayBlockingSuppressed == suppressed)
+            return;
+
+        if (rayBlockingColliders == null || originalColliderEnabledStates == null)
+            CacheRayBlockingColliders();
+
+        rayBlockingSuppressed = suppressed;
+
+        for (int i = 0; i < rayBlockingColliders.Length; i++)
+        {
+            var collider = rayBlockingColliders[i];
+            if (collider == null)
+                continue;
+
+            collider.enabled = suppressed ? false : originalColliderEnabledStates[i];
+        }
+    }
+
+    void SetGrabInteractableEnabled(bool enabled)
+    {
+        if (grabInteractable == null || grabInteractableEnabledByTool == enabled)
+            return;
+
+        grabInteractableEnabledByTool = enabled;
+        grabInteractable.enabled = enabled;
     }
 
     static XRGeneralGrabTransformer.ManipulationAxes ToManipulationAxes(Axis axis)

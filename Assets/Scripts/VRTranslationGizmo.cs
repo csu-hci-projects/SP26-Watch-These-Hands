@@ -20,7 +20,8 @@ public class VRTranslationGizmo : MonoBehaviour
     [SerializeField] float capSize = 0.055f;
     [SerializeField] float selectedScale = 1.6f;
     [SerializeField] float boundsPadding = 1.35f;
-    [SerializeField] float minimumVisibleRadius = 0.75f;
+    [SerializeField] float minimumVisibleRadius = 0.25f;
+    [SerializeField] float maximumVisibleRadius = 100f;
     [SerializeField] bool debugLogging = true;
     [SerializeField] float debugLogInterval = 0.25f;
     [SerializeField] bool verboseLogging = false;
@@ -132,7 +133,7 @@ public class VRTranslationGizmo : MonoBehaviour
 
     void UpdateGizmoScale()
     {
-        float desiredRadius = Mathf.Max(minimumVisibleRadius, EstimateTargetRadius() * boundsPadding);
+        float desiredRadius = Mathf.Clamp(EstimateTargetRadius() * boundsPadding, minimumVisibleRadius, maximumVisibleRadius);
         float scale = desiredRadius / Mathf.Max(0.0001f, handleLength);
         transform.localScale = Vector3.one * scale;
     }

@@ -1,5 +1,6 @@
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.XR.Interaction.Toolkit.Inputs;
 using UnityEngine.UI;
 using UnityEngine.XR.Interaction.Toolkit.UI;
@@ -30,9 +31,11 @@ public class VRSimpleHandToolMenu : MonoBehaviour
     [SerializeField] float canvasScale = 0.001f;
     [SerializeField] bool buildMenuAtRuntime;
     [SerializeField] bool hideUnlessTrackedHand = true;
+    [SerializeField] float cubeToOriginHoldDuration = 0.75f;
 
     [Header("Tool")]
     [SerializeField] VRTransformTool transformTool;
+    [SerializeField] VRCubeToWorldOrigin cubeToWorldOrigin;
 
     [Header("Colors")]
     [SerializeField] Color panelColor = new Color(0.02f, 0.025f, 0.03f, 0.88f);
@@ -47,11 +50,16 @@ public class VRSimpleHandToolMenu : MonoBehaviour
     Button rotateButton;
     Button scaleButton;
     Button clearButton;
+    Button cubeToOriginButton;
     TMP_Text translateLabel;
     TMP_Text rotateLabel;
     TMP_Text scaleLabel;
     TMP_Text clearLabel;
+    TMP_Text cubeToOriginLabel;
     bool built;
+    bool cubeToOriginHeld;
+    bool cubeToOriginTriggered;
+    float cubeToOriginHoldStartedAt = -1f;
 
     void Awake()
     {
@@ -74,6 +82,7 @@ public class VRSimpleHandToolMenu : MonoBehaviour
         ResolveReferences();
         ApplyVisibility();
         FollowAnchor();
+        UpdateCubeToOriginHold();
         RefreshState();
     }
 
@@ -111,6 +120,14 @@ public class VRSimpleHandToolMenu : MonoBehaviour
         RefreshState();
     }
 
+    public void MoveSelectedCubeToWorldOrigin()
+    {
+        ResolveReferences();
+        cubeToWorldOrigin?.MoveSelectedToWorldOrigin();
+        ResetCubeToOriginHold();
+        RefreshState();
+    }
+
     void ResolveReferences()
     {
         if (viewCamera == null)
@@ -118,6 +135,9 @@ public class VRSimpleHandToolMenu : MonoBehaviour
 
         if (transformTool == null)
             transformTool = VRTransformTool.Instance;
+
+        if (cubeToWorldOrigin == null)
+            cubeToWorldOrigin = VRCubeToWorldOrigin.Instance;
     }
 
     void BuildMenu()
@@ -160,7 +180,9 @@ public class VRSimpleHandToolMenu : MonoBehaviour
         translateButton = CreateButton("Translate", out translateLabel);
         rotateButton = CreateButton("Rotate", out rotateLabel);
         scaleButton = CreateButton("Scale", out scaleLabel);
-        clearButton = CreateButton("Clear", out clearLabel);
+        clearButton = CreateButton("Grab", out clearLabel);
+        cubeToOriginButton = CreateButton("Cube to 0,0,0", out cubeToOriginLabel);
+        ConfigureHoldButton(cubeToOriginButton);
 
         translateButton.onClick.AddListener(ToggleTranslate);
         rotateButton.onClick.AddListener(ToggleRotate);
@@ -280,6 +302,8 @@ public class VRSimpleHandToolMenu : MonoBehaviour
         SetButtonState(rotateButton, rotateLabel, mode == VRTransformTool.ToolMode.Rotate);
         SetButtonState(scaleButton, scaleLabel, mode == VRTransformTool.ToolMode.Scale);
         SetButtonState(clearButton, clearLabel, mode == VRTransformTool.ToolMode.None);
+        SetButtonState(cubeToOriginButton, cubeToOriginLabel, false);
+        SetButtonHoldProgress(cubeToOriginButton, cubeToOriginLabel, GetCubeToOriginHoldProgress());
     }
 
     void SetChildrenActive(bool active)
@@ -298,5 +322,71 @@ public class VRSimpleHandToolMenu : MonoBehaviour
 
         if (label != null)
             label.color = active ? activeTextColor : textColor;
+    }
+
+    void ConfigureHoldButton(Button button)
+    {
+        if (button == null)
+            return;
+
+        var trigger = button.gameObject.GetComponent<EventTrigger>();
+        if (trigger == null)
+            trigger = button.gameObject.AddComponent<EventTrigger>();
+
+        AddTrigger(trigger, EventTriggerType.PointerEnter, _ => BeginCubeToOriginHold());
+        AddTrigger(trigger, EventTriggerType.PointerExit, _ => ResetCubeToOriginHold());
+    }
+
+    static void AddTrigger(EventTrigger trigger, EventTriggerType type, UnityEngine.Events.UnityAction<BaseEventData> callback)
+    {
+        var entry = new EventTrigger.Entry { eventID = type };
+        entry.callback.AddListener(callback);
+        trigger.triggers.Add(entry);
+    }
+
+    void BeginCubeToOriginHold()
+    {
+        cubeToOriginHeld = true;
+        cubeToOriginTriggered = false;
+        cubeToOriginHoldStartedAt = Time.unscaledTime;
+    }
+
+    void ResetCubeToOriginHold()
+    {
+        cubeToOriginHeld = false;
+        cubeToOriginTriggered = false;
+        cubeToOriginHoldStartedAt = -1f;
+    }
+
+    void UpdateCubeToOriginHold()
+    {
+        if (!cubeToOriginHeld || cubeToOriginTriggered)
+            return;
+
+        if (GetCubeToOriginHoldProgress() < 1f)
+            return;
+
+        cubeToOriginTriggered = true;
+        MoveSelectedCubeToWorldOrigin();
+    }
+
+    float GetCubeToOriginHoldProgress()
+    {
+        if (!cubeToOriginHeld || cubeToOriginHoldStartedAt < 0f)
+            return 0f;
+
+        return Mathf.Clamp01((Time.unscaledTime - cubeToOriginHoldStartedAt) / Mathf.Max(0.01f, cubeToOriginHoldDuration));
+    }
+
+    void SetButtonHoldProgress(Button button, TMP_Text label, float progress)
+    {
+        if (progress <= 0f)
+            return;
+
+        if (button != null && button.targetGraphic is Image image)
+            image.color = Color.Lerp(inactiveButtonColor, activeButtonColor, progress);
+
+        if (label != null)
+            label.color = Color.Lerp(textColor, activeTextColor, progress);
     }
 }

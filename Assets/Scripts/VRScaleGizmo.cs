@@ -20,7 +20,8 @@ public class VRScaleGizmo : MonoBehaviour
     [SerializeField] float capSize = 0.055f;
     [SerializeField] float selectedScale = 1.6f;
     [SerializeField] float boundsPadding = 1.35f;
-    [SerializeField] float minimumVisibleRadius = 0.75f;
+    [SerializeField] float minimumVisibleRadius = 0.25f;
+    [SerializeField] float maximumVisibleRadius = 100f;
     [SerializeField] float minimumScale = 0.05f;
     [SerializeField] float maximumScale = 20f;
     [SerializeField] bool debugLogging = true;
@@ -74,15 +75,8 @@ public class VRScaleGizmo : MonoBehaviour
         if (target == null)
             return;
 
-        // Don't resize the gizmo during drag — moving the handles while selected causes
-        // the Near-Far Interactor to drop the selection.
-        if (!isDragging)
-            UpdateGizmoScale();
-
-        if (isDragging)
-            transform.position = target.position;
-        else
-            SyncToTarget();
+        UpdateGizmoScale();
+        SyncToTarget();
 
         if (!isDragging || activeHandle == null || activeInteractor == null)
             return;
@@ -134,6 +128,8 @@ public class VRScaleGizmo : MonoBehaviour
         }
 
         target.localScale = newScale;
+        UpdateGizmoScale();
+        SyncToTarget();
 
         var attachPoint = target.position + dragAxisWorld * currentProjection;
         activeHandle.Interactable.SetAttachPoint(attachPoint);
@@ -157,7 +153,7 @@ public class VRScaleGizmo : MonoBehaviour
 
     void UpdateGizmoScale()
     {
-        float desiredRadius = Mathf.Max(minimumVisibleRadius, EstimateTargetRadius() * boundsPadding);
+        float desiredRadius = Mathf.Clamp(EstimateTargetRadius() * boundsPadding, minimumVisibleRadius, maximumVisibleRadius);
         float scale = desiredRadius / Mathf.Max(0.0001f, handleLength);
         transform.localScale = Vector3.one * scale;
     }
